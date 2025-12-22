@@ -1,0 +1,52 @@
+// Specification: Prisma schema for job applications and status enum.
+// Provides JobStatus enum and JobApplication model persisted in PostgreSQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JobStatus {
+  ENVIADA
+  EN_PROCESO
+  ENTREVISTA
+  RECHAZADA
+  SIN_RESPUESTA
+}
+
+enum Role {
+  USER
+  DEMO
+}
+
+
+model JobApplication {
+  id              String    @id @default(uuid())
+  company         String
+  position        String
+  source          String
+  applicationDate DateTime
+  status          JobStatus
+  notes           String?
+  jobUrl          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([applicationDate])
+  @@index([userId])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  applications JobApplication[]
+}
