@@ -22,6 +22,11 @@ enum Role {
   DEMO
 }
 
+enum JobApplicationHistoryType {
+  CREATED
+  STATUS_CHANGED
+}
+
 
 model JobApplication {
   id              String    @id @default(uuid())
@@ -36,6 +41,7 @@ model JobApplication {
   updatedAt       DateTime  @updatedAt
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history         JobApplicationHistory[]
 
   @@index([status])
   @@index([applicationDate])
@@ -49,4 +55,19 @@ model User {
   role         Role     @default(USER)
   createdAt    DateTime @default(now())
   applications JobApplication[]
+  historyActions JobApplicationHistory[] @relation("ApplicationHistoryActor")
+}
+
+model JobApplicationHistory {
+  id               String                     @id @default(uuid())
+  jobApplicationId String
+  jobApplication   JobApplication             @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
+  type             JobApplicationHistoryType
+  meta             Json
+  createdAt        DateTime                   @default(now())
+  actorUserId      String?
+  actorUser        User?                      @relation("ApplicationHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([jobApplicationId])
+  @@index([createdAt])
 }

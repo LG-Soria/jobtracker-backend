@@ -36,6 +36,7 @@ describe('JobApplications E2E', () => {
   });
 
   beforeEach(async () => {
+    await prisma.jobApplicationHistory.deleteMany();
     await prisma.jobApplication.deleteMany();
   });
 
@@ -62,6 +63,7 @@ describe('JobApplications E2E', () => {
   };
 
   const resetDatabase = async () => {
+    await prisma.jobApplicationHistory.deleteMany();
     await prisma.jobApplication.deleteMany();
     await prisma.user.deleteMany();
 
@@ -228,6 +230,93 @@ describe('JobApplications E2E', () => {
       expect(listResponse.body.items.length).toBe(1);
       expect(listResponse.body.items[0].company).toBe('Hidden Search');
       expect(listResponse.body.meta.total).toBe(1);
+    });
+
+    it('devuelve detalle individual respetando el aislamiento por usuario', async () => {
+      const demoApplication = await createJobApplicationForUser(demoUser.id, {
+        company: 'Detail Corp',
+        position: 'SSR Backend',
+        status: JobStatus.ENTREVISTA,
+      });
+
+      const { agent } = await loginAs(demoUser.email, 'Demo1234!');
+      const detailResponse = await agent.get(`/job-applications/${demoApplication.id}`).expect(200);
+
+      expect(detailResponse.body.id).toBe(demoApplication.id);
+      expect(detailResponse.body.company).toBe('Detail Corp');
+      expect(detailResponse.body.status).toBe(JobStatus.ENTREVISTA);
+
+      const { agent: adminAgent } = await loginAs(adminUser.email, 'Admin1234!');
+      await adminAgent.get(`/job-applications/${demoApplication.id}`).expect(404);
+    });
+
+    it('registra evento CREATED en el historial al crear la postulacion', async () => {
+      const { agent } = await loginAs(demoUser.email, 'Demo1234!');
+
+      const payload = {
+        company: 'Wayne Tech',
+        position: 'Backend NestJS',
+        source: 'LinkedIn',
+        applicationDate: '2025-01-20',
+        status: JobStatus.ENVIADA,
+      };
+
+      const createResponse = await agent.post('/job-applications').send(payload).expect(201);
+      const historyResponse = await agent
+        .get(`/job-applications/${createResponse.body.id}/history`)
+        .expect(200);
+
+      expect(Array.isArray(historyResponse.body)).toBe(true);
+      expect(historyResponse.body).toHaveLength(1);
+      expect(historyResponse.body[0]).toMatchObject({
+        jobApplicationId: createResponse.body.id,
+        type: 'CREATED',
+      });
+      expect(historyResponse.body[0].meta).toEqual({});
+    });
+
+    it('agrega evento STATUS_CHANGED con from/to al confirmar el cambio de estado', async () => {
+      const { agent } = await loginAs(demoUser.email, 'Demo1234!');
+
+      const createResponse = await agent
+        .post('/job-applications')
+        .send({
+          company: 'Timeline Corp',
+          position: 'Frontend',
+          source: 'Referral',
+          applicationDate: '2025-01-21',
+          status: JobStatus.ENVIADA,
+        })
+        .expect(201);
+
+      await agent
+        .patch(`/job-applications/${createResponse.body.id}`)
+        .send({ status: JobStatus.EN_PROCESO })
+        .expect(200);
+
+      const historyResponse = await agent
+        .get(`/job-applications/${createResponse.body.id}/history`)
+        .expect(200);
+
+      expect(historyResponse.body).toHaveLength(2);
+      const [created, statusChanged] = historyResponse.body;
+
+      expect(created.type).toBe('CREATED');
+      expect(statusChanged.type).toBe('STATUS_CHANGED');
+      expect(statusChanged.meta).toMatchObject({
+        from: JobStatus.ENVIADA,
+        to: JobStatus.EN_PROCESO,
+      });
+      expect(new Date(created.createdAt).getTime()).toBeLessThanOrEqual(
+        new Date(statusChanged.createdAt).getTime(),
+      );
+    });
+
+    it('no expone el historial de otra persona', async () => {
+      const demoApplication = await createJobApplicationForUser(demoUser.id);
+      const { agent: adminAgent } = await loginAs(adminUser.email, 'Admin1234!');
+
+      await adminAgent.get(`/job-applications/${demoApplication.id}/history`).expect(404);
     });
   });
 });

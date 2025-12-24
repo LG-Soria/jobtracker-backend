@@ -38,6 +38,16 @@ export class JobApplicationsController {
     return this.service.findAll(req.user.sub, query);
   }
 
+  @Get(':id/history')
+  getHistory(@Req() req: RequestWithUser, @Param('id') id: string) {
+    return this.service.getHistory(req.user.sub, id);
+  }
+
+  @Get(':id')
+  findOne(@Req() req: RequestWithUser, @Param('id') id: string) {
+    return this.service.findOne(req.user.sub, id);
+  }
+
   @Post()
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   create(@Req() req: RequestWithUser, @Body() dto: CreateJobApplicationDto) {

@@ -3,6 +3,8 @@
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  JobApplicationHistory as PrismaJobApplicationHistory,
+  JobApplicationHistoryType as PrismaJobApplicationHistoryType,
   JobApplication as PrismaJobApplication,
   JobStatus as PrismaJobStatus,
   Prisma,
@@ -24,17 +26,30 @@ export class JobApplicationsService {
 
   async create(userId: string, payload: CreateJobApplicationDto) {
     const applicationDate = this.toDate(payload.applicationDate);
-    const created = await this.prisma.jobApplication.create({
-      data: {
-        company: payload.company,
-        position: payload.position,
-        source: payload.source,
-        notes: payload.notes,
-        jobUrl: payload.jobUrl,
-        applicationDate,
-        status: this.toPrismaStatus(payload.status),
-        userId,
-      },
+    const created = await this.prisma.$transaction(async (tx) => {
+      const jobApplication = await tx.jobApplication.create({
+        data: {
+          company: payload.company,
+          position: payload.position,
+          source: payload.source,
+          notes: payload.notes,
+          jobUrl: payload.jobUrl,
+          applicationDate,
+          status: this.toPrismaStatus(payload.status),
+          userId,
+        },
+      });
+
+      await tx.jobApplicationHistory.create({
+        data: {
+          jobApplicationId: jobApplication.id,
+          type: PrismaJobApplicationHistoryType.CREATED,
+          meta: {},
+          actorUserId: userId,
+        },
+      });
+
+      return jobApplication;
     });
 
     return this.mapToApiStatus(created);
@@ -97,8 +112,13 @@ export class JobApplicationsService {
     };
   }
 
+  async findOne(userId: string, id: string) {
+    const application = await this.assertOwnership(id, userId);
+    return this.mapToApiStatus(application);
+  }
+
   async update(userId: string, id: string, data: UpdateJobApplicationDto) {
-    await this.assertOwnership(id, userId);
+    const existing = await this.assertOwnership(id, userId);
 
     const updateData: Prisma.JobApplicationUpdateInput = {};
 
@@ -116,9 +136,30 @@ export class JobApplicationsService {
       updateData.applicationDate = this.toDate(data.applicationDate);
     }
 
-    const updated = await this.prisma.jobApplication.update({
-      where: { id },
-      data: updateData,
+    const newStatus = updateData.status as PrismaJobStatus | undefined;
+    const statusChanged = newStatus !== undefined && newStatus !== existing.status;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const updatedApplication = await tx.jobApplication.update({
+        where: { id },
+        data: updateData,
+      });
+
+      if (statusChanged) {
+        await tx.jobApplicationHistory.create({
+          data: {
+            jobApplicationId: id,
+            type: PrismaJobApplicationHistoryType.STATUS_CHANGED,
+            meta: {
+              from: existing.status,
+              to: updatedApplication.status,
+            },
+            actorUserId: userId,
+          },
+        });
+      }
+
+      return updatedApplication;
     });
 
     return this.mapToApiStatus(updated);
@@ -130,6 +171,16 @@ export class JobApplicationsService {
       where: { id },
     });
     return this.mapToApiStatus(removed);
+  }
+
+  async getHistory(userId: string, id: string) {
+    await this.assertOwnership(id, userId);
+    const items = await this.prisma.jobApplicationHistory.findMany({
+      where: { jobApplicationId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return items.map((entry) => this.mapHistory(entry));
   }
 
   private async assertOwnership(id: string, userId: string) {
@@ -161,6 +212,21 @@ export class JobApplicationsService {
     ...item,
     status: this.fromPrismaStatus(item.status),
   });
+
+  private mapHistory(entry: PrismaJobApplicationHistory) {
+    if (entry.type === PrismaJobApplicationHistoryType.STATUS_CHANGED) {
+      const meta = entry.meta as { from?: PrismaJobStatus; to?: PrismaJobStatus };
+      return {
+        ...entry,
+        meta: {
+          from: meta?.from ? this.fromPrismaStatus(meta.from) : undefined,
+          to: meta?.to ? this.fromPrismaStatus(meta.to) : undefined,
+        },
+      };
+    }
+
+    return { ...entry, meta: entry.meta ?? {} };
+  }
 
   private toDate(dateString: string): Date {
     if (!dateString) {

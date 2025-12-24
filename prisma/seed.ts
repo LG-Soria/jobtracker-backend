@@ -1,4 +1,4 @@
-import { JobStatus, Prisma, Role } from '@prisma/client';
+import { JobApplicationHistoryType, JobStatus, Prisma, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -228,6 +228,23 @@ async function seedDemoUsers() {
 
     if (seedApplications.length) {
       await prisma.jobApplication.createMany({ data: seedApplications });
+
+      const createdApplications = await prisma.jobApplication.findMany({
+        where: { userId: dbUser.id },
+        select: { id: true, createdAt: true },
+      });
+
+      if (createdApplications.length) {
+        await prisma.jobApplicationHistory.createMany({
+          data: createdApplications.map((app) => ({
+            jobApplicationId: app.id,
+            type: JobApplicationHistoryType.CREATED,
+            meta: {},
+            actorUserId: dbUser.id,
+            createdAt: app.createdAt,
+          })),
+        });
+      }
     }
 
     console.log(`Seeded DEMO user ${dbUser.email} with ${seedApplications.length} applications.`);
