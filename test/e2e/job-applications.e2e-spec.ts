@@ -3,11 +3,17 @@ import { Test } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import * as cookieParser from 'cookie-parser';
 import * as request from 'supertest';
-import { Role, User } from '@prisma/client';
+import {
+  JobStatus,
+  Role,
+  SalaryCurrency,
+  SalaryPeriod,
+  SalaryType,
+  User,
+} from '@prisma/client';
 import { AppModule } from '../../src/app.module';
 import { JWT_COOKIE_NAME } from '../../src/auth/auth.constants';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { JobStatus } from '@prisma/client';
 
 describe('JobApplications E2E', () => {
   let app: INestApplication;
@@ -82,6 +88,11 @@ describe('JobApplications E2E', () => {
       notes?: string;
       jobUrl?: string;
       createdAt?: Date;
+      salaryMin?: number;
+      salaryMax?: number;
+      salaryCurrency?: SalaryCurrency;
+      salaryPeriod?: SalaryPeriod;
+      salaryType?: SalaryType;
     }> = {},
   ) => {
     const baseDate = overrides.applicationDate ?? '2025-01-20';
@@ -94,6 +105,11 @@ describe('JobApplications E2E', () => {
         status: overrides.status ?? JobStatus.ENVIADA,
         notes: overrides.notes,
         jobUrl: overrides.jobUrl,
+        salaryMin: overrides.salaryMin,
+        salaryMax: overrides.salaryMax,
+        salaryCurrency: overrides.salaryCurrency,
+        salaryPeriod: overrides.salaryPeriod,
+        salaryType: overrides.salaryType,
         userId,
         createdAt: overrides.createdAt,
       },
@@ -120,15 +136,20 @@ describe('JobApplications E2E', () => {
     it('crea y lista postulaciones atadas al usuario autenticado', async () => {
       const { agent } = await loginAs(demoUser.email, 'Demo1234!');
 
-  const payload = {
-  company: 'Wayne Tech',
-  position: 'Backend NestJS',
-  source: 'LinkedIn',
-  applicationDate: '2025-01-20',
-  status: JobStatus.ENVIADA,
-  notes: 'Enviada via recruiter',
-  jobUrl: 'https://jobs.example.com/wayne-tech/backend',
-};
+      const payload = {
+        company: 'Wayne Tech',
+        position: 'Backend NestJS',
+        source: 'LinkedIn',
+        applicationDate: '2025-01-20',
+        status: JobStatus.ENVIADA,
+        notes: 'Enviada via recruiter',
+        jobUrl: 'https://jobs.example.com/wayne-tech/backend',
+        salaryMin: 120000,
+        salaryMax: 180000,
+        salaryCurrency: SalaryCurrency.ARS,
+        salaryPeriod: SalaryPeriod.Mensual,
+        salaryType: SalaryType.Bruto,
+      };
 
       const createResponse = await agent
         .post('/job-applications')
@@ -137,6 +158,13 @@ describe('JobApplications E2E', () => {
 
       expect(createResponse.body.id).toBeDefined();
       expect(createResponse.body.userId).toBe(demoUser.id);
+      expect(createResponse.body).toMatchObject({
+        salaryMin: payload.salaryMin,
+        salaryMax: payload.salaryMax,
+        salaryCurrency: payload.salaryCurrency,
+        salaryPeriod: payload.salaryPeriod,
+        salaryType: payload.salaryType,
+      });
 
       const listResponse = await agent.get('/job-applications').expect(200);
       expect(listResponse.body.meta).toMatchObject({
@@ -149,6 +177,13 @@ describe('JobApplications E2E', () => {
 
       expect(created).toBeDefined();
       expect(created.userId).toBe(demoUser.id);
+      expect(created).toMatchObject({
+        salaryMin: payload.salaryMin,
+        salaryMax: payload.salaryMax,
+        salaryCurrency: payload.salaryCurrency,
+        salaryPeriod: payload.salaryPeriod,
+        salaryType: payload.salaryType,
+      });
     });
 
     it('no expone postulaciones de otro usuario (aislamiento multi-tenant)', async () => {
@@ -237,6 +272,11 @@ describe('JobApplications E2E', () => {
         company: 'Detail Corp',
         position: 'SSR Backend',
         status: JobStatus.ENTREVISTA,
+        salaryMin: 90000,
+        salaryMax: 150000,
+        salaryCurrency: SalaryCurrency.USD,
+        salaryPeriod: SalaryPeriod.Anual,
+        salaryType: SalaryType.Neto,
       });
 
       const { agent } = await loginAs(demoUser.email, 'Demo1234!');
@@ -245,6 +285,13 @@ describe('JobApplications E2E', () => {
       expect(detailResponse.body.id).toBe(demoApplication.id);
       expect(detailResponse.body.company).toBe('Detail Corp');
       expect(detailResponse.body.status).toBe(JobStatus.ENTREVISTA);
+      expect(detailResponse.body).toMatchObject({
+        salaryMin: 90000,
+        salaryMax: 150000,
+        salaryCurrency: SalaryCurrency.USD,
+        salaryPeriod: SalaryPeriod.Anual,
+        salaryType: SalaryType.Neto,
+      });
 
       const { agent: adminAgent } = await loginAs(adminUser.email, 'Admin1234!');
       await adminAgent.get(`/job-applications/${demoApplication.id}`).expect(404);

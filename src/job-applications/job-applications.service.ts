@@ -26,6 +26,8 @@ export class JobApplicationsService {
 
   async create(userId: string, payload: CreateJobApplicationDto) {
     const applicationDate = this.toDate(payload.applicationDate);
+    this.validateSalaryRange(payload.salaryMin, payload.salaryMax);
+
     const created = await this.prisma.$transaction(async (tx) => {
       const jobApplication = await tx.jobApplication.create({
         data: {
@@ -34,6 +36,11 @@ export class JobApplicationsService {
           source: payload.source,
           notes: payload.notes,
           jobUrl: payload.jobUrl,
+          salaryMin: payload.salaryMin,
+          salaryMax: payload.salaryMax,
+          salaryCurrency: payload.salaryCurrency,
+          salaryPeriod: payload.salaryPeriod,
+          salaryType: payload.salaryType,
           applicationDate,
           status: this.toPrismaStatus(payload.status),
           userId,
@@ -122,11 +129,22 @@ export class JobApplicationsService {
 
     const updateData: Prisma.JobApplicationUpdateInput = {};
 
+    if (data.salaryMin !== undefined || data.salaryMax !== undefined) {
+      const nextSalaryMin = data.salaryMin ?? existing.salaryMin ?? undefined;
+      const nextSalaryMax = data.salaryMax ?? existing.salaryMax ?? undefined;
+      this.validateSalaryRange(nextSalaryMin, nextSalaryMax);
+    }
+
     if (data.company !== undefined) updateData.company = data.company;
     if (data.position !== undefined) updateData.position = data.position;
     if (data.source !== undefined) updateData.source = data.source;
     if (data.notes !== undefined) updateData.notes = data.notes;
     if (data.jobUrl !== undefined) updateData.jobUrl = data.jobUrl;
+    if (data.salaryMin !== undefined) updateData.salaryMin = data.salaryMin;
+    if (data.salaryMax !== undefined) updateData.salaryMax = data.salaryMax;
+    if (data.salaryCurrency !== undefined) updateData.salaryCurrency = data.salaryCurrency;
+    if (data.salaryPeriod !== undefined) updateData.salaryPeriod = data.salaryPeriod;
+    if (data.salaryType !== undefined) updateData.salaryType = data.salaryType;
 
     if (data.status !== undefined) {
       updateData.status = this.toPrismaStatus(data.status);
@@ -245,5 +263,13 @@ export class JobApplicationsService {
       throw new BadRequestException('applicationDate invalida');
     }
     return parsed;
+  }
+
+  private validateSalaryRange(min?: number | null, max?: number | null) {
+    const hasMin = min !== null && min !== undefined;
+    const hasMax = max !== null && max !== undefined;
+    if (hasMin && hasMax && max! < min!) {
+      throw new BadRequestException('salaryMax debe ser mayor o igual a salaryMin');
+    }
   }
 }

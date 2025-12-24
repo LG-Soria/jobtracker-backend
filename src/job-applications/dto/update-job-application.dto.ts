@@ -4,12 +4,20 @@
 import {
   IsDateString,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUrl,
+  Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { JobStatus, normalizeJobStatusInput } from './create-job-application.dto';
+import {
+  JobStatus,
+  normalizeJobStatusInput,
+  SalaryCurrency,
+  SalaryPeriod,
+  SalaryType,
+} from './create-job-application.dto';
 
 export class UpdateJobApplicationDto {
   @IsOptional()
@@ -40,4 +48,26 @@ export class UpdateJobApplicationDto {
   @IsOptional()
   @IsUrl()
   jobUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salaryMin?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salaryMax?: number;
+
+  @IsOptional()
+  @IsEnum(SalaryCurrency)
+  salaryCurrency?: SalaryCurrency;
+
+  @IsOptional()
+  @IsEnum(SalaryPeriod)
+  salaryPeriod?: SalaryPeriod;
+
+  @IsOptional()
+  @IsEnum(SalaryType)
+  salaryType?: SalaryType;
 }

@@ -8,10 +8,12 @@
 import {
   IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
+  Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -49,6 +51,23 @@ export const normalizeJobStatusInput = (value: unknown): JobStatus | undefined =
   return STATUS_LOOKUP[normalized];
 };
 
+export enum SalaryCurrency {
+  ARS = 'ARS',
+  USD = 'USD',
+  EUR = 'EUR',
+}
+
+export enum SalaryPeriod {
+  Mensual = 'Mensual',
+  Anual = 'Anual',
+  Hora = 'Hora',
+}
+
+export enum SalaryType {
+  Bruto = 'Bruto',
+  Neto = 'Neto',
+}
+
 export class CreateJobApplicationDto {
   @IsString()
   @IsNotEmpty()
@@ -77,4 +96,26 @@ export class CreateJobApplicationDto {
   @IsOptional()
   @IsUrl()
   jobUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salaryMin?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salaryMax?: number;
+
+  @IsOptional()
+  @IsEnum(SalaryCurrency)
+  salaryCurrency?: SalaryCurrency;
+
+  @IsOptional()
+  @IsEnum(SalaryPeriod)
+  salaryPeriod?: SalaryPeriod;
+
+  @IsOptional()
+  @IsEnum(SalaryType)
+  salaryType?: SalaryType;
 }
