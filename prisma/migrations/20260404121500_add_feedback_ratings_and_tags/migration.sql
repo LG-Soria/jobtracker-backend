@@ -1,0 +1,3 @@
+ALTER TABLE "FeedbackSignal"
+ADD COLUMN "rating" INTEGER,
+ADD COLUMN "reasonTags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

@@ -1,5 +1,14 @@
-import { JobApplicationHistoryType, JobStatus, Prisma, Role } from '@prisma/client';
+import {
+  JobApplicationHistoryType,
+  JobStatus,
+  OpportunitySource,
+  Prisma,
+  RemotePolicy,
+  Role,
+  RoleType,
+} from '@prisma/client';
 import * as argon2 from 'argon2';
+import * as path from 'node:path';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const prisma = new PrismaService();
@@ -208,6 +217,14 @@ async function seedDemoUsers() {
   for (const user of seedUsers) {
     const dbUser = await upsertUser(user.email, user.password, user.role);
 
+    await prisma.feedbackSignal.deleteMany({ where: { userId: dbUser.id } });
+    await prisma.applicationAttempt.deleteMany({ where: { userId: dbUser.id } });
+    await prisma.opportunity.deleteMany({ where: { userId: dbUser.id } });
+    await prisma.searchProfile.deleteMany({ where: { userId: dbUser.id } });
+    await prisma.cvVariant.deleteMany({ where: { userId: dbUser.id } });
+    await prisma.jobApplicationHistory.deleteMany({
+      where: { actorUserId: dbUser.id },
+    });
     await prisma.jobApplication.deleteMany({
       where: { userId: dbUser.id },
     });
@@ -247,6 +264,65 @@ async function seedDemoUsers() {
       }
     }
 
+    const frontendCv = await prisma.cvVariant.create({
+      data: {
+        name: 'Frontend Developer CV',
+        roleType: RoleType.FRONTEND,
+        filePath: path.resolve(__dirname, '../assets/cv/frontend-resume.pdf'),
+        active: true,
+        userId: dbUser.id,
+      },
+    });
+
+    const fullstackCv = await prisma.cvVariant.create({
+      data: {
+        name: 'Full Stack Developer CV',
+        roleType: RoleType.FULLSTACK,
+        filePath: path.resolve(__dirname, '../assets/cv/fullstack-resume.pdf'),
+        active: true,
+        userId: dbUser.id,
+      },
+    });
+
+    await prisma.searchProfile.createMany({
+      data: [
+        {
+          name: 'Frontend Developer',
+          roleTargets: ['frontend developer', 'react developer', 'ui engineer'],
+          keywords: ['react', 'typescript', 'next.js', 'frontend', 'ui'],
+          locations: ['remote', 'argentina', 'latam'],
+          remotePolicy: RemotePolicy.HYBRID_OR_REMOTE,
+          seniority: 'mid-senior',
+          enabled: true,
+          dailyLimit: 20,
+          sources: [
+            OpportunitySource.GET_ON_BOARD,
+            OpportunitySource.GREENHOUSE,
+            OpportunitySource.LEVER,
+          ],
+          defaultCvVariantId: frontendCv.id,
+          userId: dbUser.id,
+        },
+        {
+          name: 'Full Stack Developer',
+          roleTargets: ['full stack developer', 'fullstack engineer', 'software engineer'],
+          keywords: ['node', 'typescript', 'backend', 'api', 'react'],
+          locations: ['remote', 'argentina', 'latam'],
+          remotePolicy: RemotePolicy.HYBRID_OR_REMOTE,
+          seniority: 'mid-senior',
+          enabled: true,
+          dailyLimit: 20,
+          sources: [
+            OpportunitySource.GET_ON_BOARD,
+            OpportunitySource.GREENHOUSE,
+            OpportunitySource.LEVER,
+          ],
+          defaultCvVariantId: fullstackCv.id,
+          userId: dbUser.id,
+        },
+      ],
+    });
+
     console.log(`Seeded DEMO user ${dbUser.email} with ${seedApplications.length} applications.`);
   }
 }
@@ -269,8 +345,10 @@ async function seedPersonalUser() {
 function assertSafeSeedTarget() {
   const url = process.env.DATABASE_URL ?? '';
   const mode = (process.env.SEED_MODE || 'demo').toLowerCase();
+  const isDedicatedDemoDatabase =
+    url.includes('/jobtracker_dev') || url.includes('/jobtracker_test');
 
-  if (mode === 'demo' && url.includes('schema=public')) {
+  if (mode === 'demo' && url.includes('schema=public') && !isDedicatedDemoDatabase) {
     throw new Error(
       'Refusing to run DEMO seed on schema=public. Use a demo schema (e.g. schema=demo) or a separate database.',
     );
@@ -281,7 +359,7 @@ function assertSafeSeedTarget() {
 async function main() {
   // PrismaService no corre hooks acá, conectamos manualmente
   await prisma.$connect();
-assertSafeSeedTarget();
+  assertSafeSeedTarget();
   const mode = getSeedMode();
   if (mode === 'personal') {
     await seedPersonalUser();

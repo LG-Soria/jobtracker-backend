@@ -4,13 +4,8 @@
   "testRegex": ".e2e-spec.ts$",
   "testTimeout": 30000,
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": ["ts-jest", { "isolatedModules": true }]
   },
   "collectCoverageFrom": [],
-  "testEnvironment": "node",
-  "globals": {
-    "ts-jest": {
-      "isolatedModules": true
-    }
-  }
+  "testEnvironment": "node"
 }

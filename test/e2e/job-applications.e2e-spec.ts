@@ -69,6 +69,11 @@ describe('JobApplications E2E', () => {
   };
 
   const resetDatabase = async () => {
+    await prisma.feedbackSignal.deleteMany();
+    await prisma.applicationAttempt.deleteMany();
+    await prisma.opportunity.deleteMany();
+    await prisma.searchProfile.deleteMany();
+    await prisma.cvVariant.deleteMany();
     await prisma.jobApplicationHistory.deleteMany();
     await prisma.jobApplication.deleteMany();
     await prisma.user.deleteMany();

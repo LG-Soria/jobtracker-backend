@@ -1,0 +1,14 @@
+services:
+  postgres-dev:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jobtracker_dev
+      POSTGRES_USER: jobtracker_dev
+      POSTGRES_PASSWORD: jobtracker_dev
+    ports:
+      - "55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobtracker_dev -d jobtracker_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 20

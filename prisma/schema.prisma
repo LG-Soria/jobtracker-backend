@@ -44,6 +44,87 @@ enum JobApplicationHistoryType {
   STATUS_CHANGED
 }
 
+enum RoleType {
+  FRONTEND
+  FULLSTACK
+}
+
+enum RemotePolicy {
+  REMOTE_ONLY
+  HYBRID_OR_REMOTE
+  ANY
+}
+
+enum SearchMatchMode {
+  STRICT
+  BALANCED
+  BROAD
+}
+
+enum Eligibility {
+  PASS
+  UNKNOWN
+  FAIL
+}
+
+enum WorkflowDecision {
+  READY_FOR_QUEUE
+  MANUAL_REVIEW
+  LOW_PRIORITY
+  DISMISSED_DUPLICATE
+  DISMISSED_POLICY
+  TRACKED_EXISTING
+}
+
+enum DiscoveryRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum OpportunitySource {
+  GET_ON_BOARD
+  GREENHOUSE
+  LEVER
+  ASHBY
+  SCRAPER
+}
+
+enum OpportunityStatus {
+  DISCOVERED
+  QUALIFIED
+  QUEUED_FOR_APPROVAL
+  APPROVED
+  SENT
+  FAILED
+  DISMISSED
+}
+
+enum GuardDecision {
+  PASS
+  BLOCK_DUPLICATE
+  BLOCK_NO_EMAIL
+  BLOCK_LOW_SCORE
+  BLOCK_BLACKLISTED
+}
+
+enum DeliveryChannel {
+  EMAIL
+  MANUAL_LINK
+}
+
+enum ApplicationAttemptStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum FeedbackDecision {
+  APPROVED
+  DISMISSED
+  WRONG_CV
+  BAD_MATCH
+}
 
 model JobApplication {
   id              String    @id @default(uuid())
@@ -71,13 +152,21 @@ model JobApplication {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(USER)
-  createdAt    DateTime @default(now())
-  applications JobApplication[]
-  historyActions JobApplicationHistory[] @relation("ApplicationHistoryActor")
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  passwordHash        String
+  role                Role                 @default(USER)
+  createdAt           DateTime             @default(now())
+  lastDiscoveryRunAt  DateTime?
+  applications        JobApplication[]
+  historyActions      JobApplicationHistory[] @relation("ApplicationHistoryActor")
+  searchProfiles      SearchProfile[]
+  cvVariants          CvVariant[]
+  opportunities       Opportunity[]
+  applicationAttempts ApplicationAttempt[]
+  feedbackSignals     FeedbackSignal[]
+  postingEvaluations  PostingEvaluation[]
+  discoveryRunsTriggered DiscoveryRun[]    @relation("DiscoveryRunTriggeredBy")
 }
 
 model JobApplicationHistory {
@@ -92,4 +181,198 @@ model JobApplicationHistory {
 
   @@index([jobApplicationId])
   @@index([createdAt])
+}
+
+model SearchProfile {
+  id               String              @id @default(uuid())
+  name             String
+  roleTargets      String[]
+  keywords         String[]
+  locations        String[]
+  remotePolicy     RemotePolicy        @default(ANY)
+  matchingMode     SearchMatchMode     @default(BALANCED)
+  seniority        String?
+  enabled          Boolean             @default(true)
+  dailyLimit       Int                 @default(20)
+  sources          OpportunitySource[]
+  userId           String
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultCvVariantId String?
+  defaultCvVariant CvVariant?          @relation("DefaultCvVariant", fields: [defaultCvVariantId], references: [id], onDelete: SetNull)
+  opportunities    Opportunity[]
+  postingEvaluations PostingEvaluation[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([enabled])
+}
+
+model CvVariant {
+  id                      String              @id @default(uuid())
+  name                    String
+  roleType                RoleType
+  filePath                String
+  active                  Boolean             @default(true)
+  userId                  String
+  user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchProfilesAsDefault SearchProfile[]     @relation("DefaultCvVariant")
+  suggestedForOpportunities Opportunity[]     @relation("SuggestedCvVariant")
+  applicationAttempts     ApplicationAttempt[]
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([active])
+}
+
+model Opportunity {
+  id                  String               @id @default(uuid())
+  externalId          String
+  source              OpportunitySource
+  sourceUrl           String
+  company             String
+  title               String
+  description         String?
+  location            String?
+  remote              Boolean              @default(false)
+  publishedAt         DateTime?
+  applyEmail          String?
+  applyUrl            String?
+  normalizedFingerprint String
+  profileMatch        String?
+  score               Float                @default(0)
+  applyChannel        DeliveryChannel      @default(MANUAL_LINK)
+  status              OpportunityStatus    @default(DISCOVERED)
+  guardDecision       GuardDecision        @default(BLOCK_NO_EMAIL)
+  guardReason         String?
+  workflowDecision    WorkflowDecision?
+  workflowReasons     String[]             @default([])
+  matchingSummaryJson Json?
+  archivedAt          DateTime?
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchProfileId     String?
+  searchProfile       SearchProfile?       @relation(fields: [searchProfileId], references: [id], onDelete: SetNull)
+  cvVariantSuggestedId String?
+  cvVariantSuggested  CvVariant?           @relation("SuggestedCvVariant", fields: [cvVariantSuggestedId], references: [id], onDelete: SetNull)
+  sourcePostingId     String?
+  sourcePosting       SourcePosting?       @relation(fields: [sourcePostingId], references: [id], onDelete: SetNull)
+  selectedEvaluationId String?            @unique
+  selectedEvaluation  PostingEvaluation?   @relation("SelectedOpportunityEvaluation", fields: [selectedEvaluationId], references: [id], onDelete: SetNull)
+  applicationAttempts ApplicationAttempt[]
+  feedbackSignals     FeedbackSignal[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([userId, source, externalId])
+  @@index([normalizedFingerprint])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([userId])
+  @@index([archivedAt])
+  @@index([workflowDecision])
+  @@index([sourcePostingId])
+}
+
+model ApplicationAttempt {
+  id                String                   @id @default(uuid())
+  opportunityId     String
+  opportunity       Opportunity              @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  cvVariantId       String?
+  cvVariant         CvVariant?               @relation(fields: [cvVariantId], references: [id], onDelete: SetNull)
+  deliveryChannel   DeliveryChannel
+  recipientEmail    String
+  subject           String
+  body              String
+  providerMessageId String?
+  errorMessage      String?
+  sentAt            DateTime?
+  status            ApplicationAttemptStatus @default(PENDING)
+  userId            String
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([opportunityId])
+  @@index([status])
+  @@index([userId])
+}
+
+model FeedbackSignal {
+  id            String           @id @default(uuid())
+  opportunityId String
+  opportunity   Opportunity      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  decision      FeedbackDecision
+  rating        Int?
+  reasonTags    String[]         @default([])
+  notes         String?
+  createdAt     DateTime         @default(now())
+
+  @@index([opportunityId])
+  @@index([userId])
+}
+
+model SourcePosting {
+  id             String              @id @default(uuid())
+  source         OpportunitySource
+  externalId     String
+  sourceUrl      String
+  companyRaw     String
+  titleRaw       String
+  descriptionRaw String?
+  locationRaw    String?
+  publishedAt    DateTime?
+  payloadJson    Json?
+  fetchedAt      DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  opportunities  Opportunity[]
+  evaluations    PostingEvaluation[]
+
+  @@unique([source, externalId])
+  @@index([source, publishedAt])
+}
+
+model PostingEvaluation {
+  id                 String               @id @default(uuid())
+  sourcePostingId    String
+  sourcePosting      SourcePosting        @relation(fields: [sourcePostingId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchProfileId    String
+  searchProfile      SearchProfile        @relation(fields: [searchProfileId], references: [id], onDelete: Cascade)
+  eligibility        Eligibility
+  eligibilityReasons String[]             @default([])
+  relevanceScore     Float                @default(0)
+  confidenceScore    Float                @default(0)
+  finalScore         Float                @default(0)
+  selected           Boolean              @default(false)
+  explanationJson    Json?
+  selectedForOpportunity Opportunity?     @relation("SelectedOpportunityEvaluation")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@unique([sourcePostingId, userId, searchProfileId])
+  @@index([userId, selected])
+  @@index([searchProfileId])
+}
+
+model DiscoveryRun {
+  id                String               @id @default(uuid())
+  lockKey           String
+  status            DiscoveryRunStatus
+  startedAt         DateTime             @default(now())
+  finishedAt        DateTime?
+  summaryJson       Json?
+  errorMessage      String?
+  triggeredByUserId String?
+  triggeredByUser   User?                @relation("DiscoveryRunTriggeredBy", fields: [triggeredByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([lockKey, status])
+  @@index([startedAt])
 }
